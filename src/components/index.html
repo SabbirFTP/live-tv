@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="bn">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live TV Pro — M3U / HLS লাইভ স্ট্রিম ম্যানেজার</title>
+
+    <meta name="description" content="M3U / M3U8 / HLS লাইভ স্ট্রিম চেক ও ম্যানেজ করুন সহজেই। পাবলিক সোর্স থেকে লোড করুন।" />
+    <meta property="og:title"       content="Live TV Pro" />
+    <meta property="og:description" content="M3U / HLS লাইভ স্ট্রিম ম্যানেজার" />
+    <meta property="og:image"       content="https://tvpro.techeasylife.com/og-image.png" />
+    <meta property="og:url"         content="https://tvpro.techeasylife.com/" />
+    <meta name="twitter:card"       content="summary_large_image" />
+
+    <!-- Prevent dark-mode flash -->
+    <script>
+      try {
+        if (localStorage.getItem("sp_theme") === "dark")
+          document.documentElement.classList.add("dark");
+      } catch (e) {}
+    </script>
+
+    <!-- HLS.js (loaded before React so useHlsPlayer can reference window.Hls) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>
