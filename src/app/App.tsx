@@ -96,6 +96,54 @@ export default function App() {
     return v;
   });
 
+  // Derived filtered list
+  const allGroups = [...new Set(streams.map(s => s.group).filter(Boolean))].sort();
+
+  const filtered = streams.filter(s => {
+    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) &&
+        !s.url.toLowerCase().includes(search.toLowerCase()) &&
+        !s.group.toLowerCase().includes(search.toLowerCase())) return false;
+    if (groupFilter && s.group !== groupFilter) return false;
+    if (tab === 'live') return s.status === 'live';
+    if (tab === 'blocked') return s.status === 'blocked';
+    if (tab === 'dead') return s.status === 'dead';
+    if (tab === 'favorites') return s.isFavorite;
+    if (tab === 'recent') return !!s.lastPlayed;
+    return true;
+  }).sort((a, b) => {
+    if (tab === 'recent') return (b.lastPlayed || 0) - (a.lastPlayed || 0);
+    return 0;
+  });
+
+  const totalItems = filtered.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+
+  const paginatedStreams = filtered.slice(
+    (activePage - 1) * pageSize,
+    activePage * pageSize
+  );
+
+  // Auto-check visible idle streams on the current page
+  const visibleKey = paginatedStreams.map(s => `${s.id}-${s.status}`).join(',');
+
+  useEffect(() => {
+    const idleVisible = paginatedStreams.filter(s => s.status === 'idle');
+    if (idleVisible.length === 0) return;
+
+    // Mark visible idle streams as checking
+    setStreams(prev => prev.map(s => {
+      const isIdleVisible = idleVisible.some(iv => iv.id === s.id);
+      return isIdleVisible ? { ...s, status: 'checking' } : s;
+    }));
+
+    // Check them
+    idleVisible.forEach(async (stream) => {
+      const result = await checkStreamUrl(stream.url);
+      setStreams(prev => prev.map(s => s.id === stream.id ? { ...s, ...result } : s));
+    });
+  }, [visibleKey]);
+
   // Apply theme
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -170,7 +218,7 @@ export default function App() {
   }, [streams]);
 
   const handleCheckAll = useCallback(async () => {
-    const toCheck = streams.filter(s => s.status !== 'checking');
+    const toCheck = filtered.filter(s => s.status !== 'checking');
     if (!toCheck.length) return;
     toast.info(`Checking ${toCheck.length} streams…`);
     setStreams(prev => prev.map(s => toCheck.find(c => c.id === s.id) ? { ...s, status: 'checking' } : s));
@@ -189,7 +237,7 @@ export default function App() {
     const workers = Array.from({ length: Math.min(concurrency, queue.length) }, worker);
     await Promise.all(workers);
     toast.success('Check complete');
-  }, [streams]);
+  }, [filtered]);
 
   const handlePlay = (stream: Stream) => {
     setActiveStream(stream);
@@ -265,33 +313,7 @@ export default function App() {
     toast.success('All streams cleared');
   };
 
-  // Derived filtered list
-  const allGroups = [...new Set(streams.map(s => s.group).filter(Boolean))].sort();
-
-  const filtered = streams.filter(s => {
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) &&
-        !s.url.toLowerCase().includes(search.toLowerCase()) &&
-        !s.group.toLowerCase().includes(search.toLowerCase())) return false;
-    if (groupFilter && s.group !== groupFilter) return false;
-    if (tab === 'live') return s.status === 'live';
-    if (tab === 'blocked') return s.status === 'blocked';
-    if (tab === 'dead') return s.status === 'dead';
-    if (tab === 'favorites') return s.isFavorite;
-    if (tab === 'recent') return !!s.lastPlayed;
-    return true;
-  }).sort((a, b) => {
-    if (tab === 'recent') return (b.lastPlayed || 0) - (a.lastPlayed || 0);
-    return 0;
-  });
-
-  const totalItems = filtered.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const activePage = Math.min(currentPage, totalPages);
-
-  const paginatedStreams = filtered.slice(
-    (activePage - 1) * pageSize,
-    activePage * pageSize
-  );
+  // Derived configuration
 
   const TABS: { id: TabFilter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -447,7 +469,7 @@ export default function App() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-accent transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                Check All
+                {filtered.length === streams.length ? 'Check All' : 'Check Showing'}
               </button>
             </div>
 
