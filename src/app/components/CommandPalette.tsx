@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, Play, RotateCcw, Download, Trash2, Star, Sun, Moon } from 'lucide-react';
+import { Search, Play, RotateCcw, Download, Trash2, Star, Sun, Moon, Loader2 } from 'lucide-react';
 import type { Stream } from './types';
 
 interface Action {
@@ -24,10 +24,15 @@ interface Props {
 
 export function CommandPalette({ open, onClose, streams, onPlay, onCheckAll, onExport, onClearAll, onToggleFavorites, onToggleTheme }: Props) {
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) { setQuery(''); setTimeout(() => inputRef.current?.focus(), 50); }
+    if (open) {
+      setQuery('');
+      setDebouncedQuery('');
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -35,6 +40,13 @@ export function CommandPalette({ open, onClose, streams, onPlay, onCheckAll, onE
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const staticActions: Action[] = [
     { id: 'check', label: 'Check All Streams', icon: <RotateCcw className="w-4 h-4" />, run: () => { onCheckAll(); onClose(); } },
@@ -45,7 +57,7 @@ export function CommandPalette({ open, onClose, streams, onPlay, onCheckAll, onE
   ];
 
   const streamActions: Action[] = streams
-    .filter(s => s.name.toLowerCase().includes(query.toLowerCase()))
+    .filter(s => s.name.toLowerCase().includes(debouncedQuery.toLowerCase()))
     .slice(0, 8)
     .map(s => ({
       id: s.id,
@@ -69,7 +81,11 @@ export function CommandPalette({ open, onClose, streams, onPlay, onCheckAll, onE
       >
         {/* Input */}
         <div className="flex items-center gap-3 px-4 border-b border-border">
-          <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+          {query !== debouncedQuery ? (
+            <Loader2 className="w-4 h-4 text-muted-foreground shrink-0 animate-spin" />
+          ) : (
+            <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+          )}
           <input
             ref={inputRef}
             value={query}

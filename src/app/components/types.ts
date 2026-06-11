@@ -20,7 +20,7 @@ export interface PreloadedSource {
 }
 
 export const PRELOADED_SOURCES: PreloadedSource[] = [
-  { name: 'Monjil Pro', url: 'https://raw.githubusercontent.com/Monjil404/livetv/refs/heads/main/pro', description: 'BD Premium' },
+  { name: 'MMS Studio-ORG', url: 'https://raw.githubusercontent.com/Monjil404/livetv/refs/heads/main/pro', description: 'BD Premium' },
   { name: 'IPTV Org BD', url: 'https://raw.githubusercontent.com/iptv-org/iptv/master/streams/bd.m3u', description: 'Bangladesh' },
   { name: 'IPTV Org IN', url: 'https://raw.githubusercontent.com/iptv-org/iptv/master/streams/in.m3u', description: 'India' },
   { name: 'Free-TV Global', url: 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8', description: 'Global' },

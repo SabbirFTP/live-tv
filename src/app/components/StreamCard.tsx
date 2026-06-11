@@ -37,6 +37,10 @@ export function StreamCard({ stream, selected, onSelect, onPlay, onCheck, onCopy
         <div className="flex items-center gap-2">
           <span className="truncate text-sm text-foreground">{stream.name}</span>
           {stream.isFavorite && <Star className="w-3 h-3 text-amber-500 fill-amber-500 shrink-0" />}
+          {/* Status badge for mobile */}
+          <span className="sm:hidden shrink-0">
+            <StatusBadge status={stream.status} />
+          </span>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs font-mono text-muted-foreground truncate">{truncateUrl(stream.url)}</span>
@@ -49,7 +53,7 @@ export function StreamCard({ stream, selected, onSelect, onPlay, onCheck, onCopy
       </div>
 
       {/* Status */}
-      <div className="shrink-0 hidden sm:block">
+      <div className="w-24 flex justify-center shrink-0 hidden sm:flex">
         <StatusBadge status={stream.status} />
       </div>
 

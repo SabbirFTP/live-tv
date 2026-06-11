@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast, Toaster } from 'sonner';
 import {
   Search, Sun, Moon, Download, Trash2, RotateCcw,
-  Tv2, Command, Star, Clock, ChevronDown
+  Tv2, Command, Star, Clock, ChevronDown, ChevronLeft, ChevronRight, Loader2
 } from 'lucide-react';
 import type { Stream, StreamStatus } from './components/types';
 import { StreamInput } from './components/StreamInput';
@@ -45,16 +45,51 @@ async function checkStreamUrl(url: string): Promise<{ status: StreamStatus; resp
   }
 }
 
+function getPageNumbers(current: number, total: number): (number | '...')[] {
+  const pages: (number | '...')[] = [];
+  if (total <= 5) {
+    for (let i = 1; i <= total; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (current > 3) pages.push('...');
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let i = start; i <= end; i++) {
+      if (!pages.includes(i)) pages.push(i);
+    }
+    if (current < total - 2) pages.push('...');
+    if (!pages.includes(total)) pages.push(total);
+  }
+  return pages;
+}
+
 export default function App() {
   const [streams, setStreams] = useState<Stream[]>(() => loadFromStorage(STORAGE_KEY, []));
   const [darkMode, setDarkMode] = useState(() => loadFromStorage(THEME_KEY, true));
   const [tab, setTab] = useState<TabFilter>('all');
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeStream, setActiveStream] = useState<Stream | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, groupFilter, tab]);
+
   const [visits] = useState(() => {
     const v = loadFromStorage<number>(VISITS_KEY, 0) + 1;
     saveToStorage(VISITS_KEY, v);
@@ -139,10 +174,20 @@ export default function App() {
     if (!toCheck.length) return;
     toast.info(`Checking ${toCheck.length} streams…`);
     setStreams(prev => prev.map(s => toCheck.find(c => c.id === s.id) ? { ...s, status: 'checking' } : s));
-    for (const stream of toCheck) {
-      const result = await checkStreamUrl(stream.url);
-      setStreams(prev => prev.map(s => s.id === stream.id ? { ...s, ...result } : s));
-    }
+
+    const queue = [...toCheck];
+    const concurrency = 10;
+    const worker = async () => {
+      while (queue.length > 0) {
+        const stream = queue.shift();
+        if (!stream) break;
+        const result = await checkStreamUrl(stream.url);
+        setStreams(prev => prev.map(s => s.id === stream.id ? { ...s, ...result } : s));
+      }
+    };
+
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, worker);
+    await Promise.all(workers);
     toast.success('Check complete');
   }, [streams]);
 
@@ -180,16 +225,28 @@ export default function App() {
     setSelected(new Set());
   };
 
-  const handleBulkCheck = async () => {
+  const handleBulkCheck = useCallback(async () => {
     const toCheck = streams.filter(s => selected.has(s.id));
+    if (!toCheck.length) return;
+    toast.info(`Checking ${toCheck.length} selected streams…`);
     setStreams(prev => prev.map(s => selected.has(s.id) ? { ...s, status: 'checking' } : s));
-    for (const stream of toCheck) {
-      const result = await checkStreamUrl(stream.url);
-      setStreams(prev => prev.map(s => s.id === stream.id ? { ...s, ...result } : s));
-    }
+
+    const queue = [...toCheck];
+    const concurrency = 10;
+    const worker = async () => {
+      while (queue.length > 0) {
+        const stream = queue.shift();
+        if (!stream) break;
+        const result = await checkStreamUrl(stream.url);
+        setStreams(prev => prev.map(s => s.id === stream.id ? { ...s, ...result } : s));
+      }
+    };
+
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, worker);
+    await Promise.all(workers);
     toast.success('Bulk check complete');
     setSelected(new Set());
-  };
+  }, [streams, selected]);
 
   const handleExport = () => {
     const toExport = selected.size > 0 ? streams.filter(s => selected.has(s.id)) : streams;
@@ -226,6 +283,15 @@ export default function App() {
     if (tab === 'recent') return (b.lastPlayed || 0) - (a.lastPlayed || 0);
     return 0;
   });
+
+  const totalItems = filtered.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+
+  const paginatedStreams = filtered.slice(
+    (activePage - 1) * pageSize,
+    activePage * pageSize
+  );
 
   const TABS: { id: TabFilter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -284,10 +350,14 @@ export default function App() {
 
           {/* Search */}
           <div className="flex-1 max-w-xs relative hidden sm:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            {searchInput !== search ? (
+              <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground animate-spin" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            )}
             <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
               placeholder="Search channels…"
               className="w-full pl-8 pr-3 py-1.5 bg-input-background border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
             />
@@ -406,10 +476,14 @@ export default function App() {
             {/* Mobile search */}
             <div className="sm:hidden mt-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                {searchInput !== search ? (
+                  <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground animate-spin" />
+                ) : (
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                )}
                 <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
                   placeholder="Search channels…"
                   className="w-full pl-8 pr-3 py-2 bg-input-background border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
                 />
@@ -469,7 +543,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="divide-y-0">
-                  {filtered.map(stream => (
+                  {paginatedStreams.map(stream => (
                     <StreamCard
                       key={stream.id}
                       stream={stream}
@@ -485,6 +559,78 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {filtered.length > 0 && (
+              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 bg-muted/20 border border-border rounded-lg">
+                {/* Left: Info */}
+                <span className="text-xs text-muted-foreground font-mono">
+                  Showing <span className="font-semibold text-foreground font-mono">{(activePage - 1) * pageSize + 1}</span>-
+                  <span className="font-semibold text-foreground font-mono">{Math.min(activePage * pageSize, totalItems)}</span> of{' '}
+                  <span className="font-semibold text-foreground font-mono">{totalItems}</span> channels
+                </span>
+
+                {/* Center: Navigation */}
+                <div className="flex items-center gap-1">
+                  <button
+                    disabled={activePage === 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="p-1.5 rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:hover:bg-card transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {getPageNumbers(activePage, totalPages).map((p, idx) => (
+                    <button
+                      key={idx}
+                      disabled={p === '...'}
+                      onClick={() => typeof p === 'number' && setCurrentPage(p)}
+                      className={`px-3 py-1 rounded-lg text-xs font-mono transition-colors ${
+                        p === activePage
+                          ? 'bg-primary text-primary-foreground font-semibold font-mono'
+                          : p === '...'
+                          ? 'text-muted-foreground cursor-default font-mono'
+                          : 'border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer font-mono'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+
+                  <button
+                    disabled={activePage === totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    className="p-1.5 rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 disabled:hover:bg-card transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    title="Next Page"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Right: Page Size Selector */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-mono">Per page:</span>
+                  <div className="relative">
+                    <select
+                      value={pageSize}
+                      onChange={e => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="appearance-none pl-2.5 pr-7 py-1 bg-input-background border border-border rounded-lg text-xs text-foreground outline-none focus:border-primary cursor-pointer font-mono"
+                    >
+                      {[10, 20, 50, 100].map(sz => (
+                        <option key={sz} value={sz}>
+                          {sz}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {filtered.length > 0 && (
               <p className="text-xs text-muted-foreground font-mono mt-2 text-center">
